@@ -18,6 +18,7 @@ from typing import Dict, Any, List, Tuple, Optional
 import pandas as pd
 import streamlit as st
 import requests
+import yaml
 
 # local project modules (must exist)
 import analyzer    # must provide read_table, generate_analysis_report, load_business_key_map
