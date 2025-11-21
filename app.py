@@ -8,6 +8,7 @@ Streamlit app with:
  - Ability to list SBQQ__* objects and fetch sample rows into analyzer
 Place next to analyzer.py and auth_db.py and the helper sf_pkce_oauth.py
 """
+
 import yaml
 import os
 import json
@@ -208,26 +209,7 @@ def salesforce_connect_panel(out_dir: str = "analysis_output") -> Tuple[Dict[str
                         st.text(traceback.format_exc())
 
     # Quick connect (username+token) in right column
-    with col2:
-        st.markdown("#### Quick connect (username + token)")
-        st.caption("Use this for dev testing only; for production use OAuth Connected App.")
-        up_user = st.text_input("SF Username", key="sf_up_user")
-        up_pwd = st.text_input("SF Password", type="password", key="sf_up_pwd")
-        up_token = st.text_input("SF Security Token", type="password", key="sf_up_token")
-        up_domain = st.selectbox("Auth Domain (username/token)", ["login", "test"], index=0, key="sf_up_domain")
-        if st.button("Test Username+Token Connection"):
-            if not (up_user and up_pwd and up_token):
-                st.error("Provide username, password, and security token")
-            else:
-                try:
-                    with st.spinner("Testing connection..."):
-                        sf = connect_salesforce_username_password(username=up_user, password=up_pwd, security_token=up_token, domain=up_domain)
-                        sobjects = fetch_org_sobjects(sf, limit=200)
-                        st.success(f"Connected. Top objects: {sobjects[:20]}")
-                except Exception as e:
-                    st.error("Connection failed: " + str(e))
-                    with st.expander("Traceback"):
-                        st.text(traceback.format_exc())
+    
 
     return sf_tables, saved_files, oauth_tokens
 
