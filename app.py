@@ -132,7 +132,7 @@ def salesforce_connect_panel(out_dir: str = "analysis_output") -> Tuple[Dict[str
       - oauth_tokens: dict with token response if OAuth used
     """
     st.markdown("### Connect to Salesforce (optional)")
-    st.info("You can (A) quick connect using Username+Password+Token (dev) OR (B) use OAuth (Connected App) (recommended).")
+    st.info("use OAuth (Connected App) (recommended).")
 
     col1, col2 = st.columns(2)
     sf_tables: Dict[str, pd.DataFrame] = {}
