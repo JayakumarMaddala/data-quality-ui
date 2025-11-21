@@ -1,0 +1,450 @@
+{
+  "validation": {
+    "uploaded_count": 3,
+    "validated_count": 3,
+    "invalid_count": 0,
+    "details": {
+      "products.csv": {
+        "is_valid": true,
+        "reasons": [
+          "No clear primary key found; consider adding a stable identifier"
+        ],
+        "duplicate_info": {},
+        "duplicate_examples": {},
+        "missing_mandatory": []
+      },
+      "product_prices.csv": {
+        "is_valid": true,
+        "reasons": [],
+        "duplicate_info": {},
+        "duplicate_examples": {},
+        "missing_mandatory": []
+      },
+      "orders.csv": {
+        "is_valid": true,
+        "reasons": [],
+        "duplicate_info": {},
+        "duplicate_examples": {},
+        "missing_mandatory": []
+      }
+    },
+    "files_analyzed": [
+      "products.csv",
+      "product_prices.csv",
+      "orders.csv"
+    ],
+    "files_skipped": []
+  },
+  "relationships": [],
+  "relation_type_counts": {},
+  "relation_type_by_table": {},
+  "orphans": [],
+  "logical_duplicates": {
+    "product_prices.csv": {
+      "P1||USD||10.0": {
+        "canonical": "PR1",
+        "pk_values": [
+          "PR1",
+          "PR6"
+        ],
+        "rows": [
+          {
+            "PriceId": "PR1",
+            "ProductId": "P1",
+            "Currency": "USD",
+            "ListPrice": 10.0
+          },
+          {
+            "PriceId": "PR6",
+            "ProductId": "P1",
+            "Currency": "USD",
+            "ListPrice": 10.0
+          }
+        ]
+      }
+    }
+  },
+  "near_duplicates": [],
+  "parent_merge_map": {
+    "PR6": "PR1"
+  },
+  "child_fk_conflicts": [],
+  "pk_uniqueness_issues": {},
+  "full_row_duplicates": {
+    "products.csv": {
+      "total_groups": 1,
+      "groups": {
+        "P5||DuplicateRow||D-1||Misc||5.0": {
+          "count": 2,
+          "examples": [
+            {
+              "ProductId": "P5",
+              "Name": "DuplicateRow",
+              "SKU": "D-1",
+              "Family": "Misc",
+              "Price": 5.0
+            },
+            {
+              "ProductId": "P5",
+              "Name": "DuplicateRow",
+              "SKU": "D-1",
+              "Family": "Misc",
+              "Price": 5.0
+            }
+          ]
+        }
+      }
+    }
+  },
+  "business_key_issues": {
+    "products.csv": [
+      {
+        "key": [
+          "ProductId",
+          "Price"
+        ],
+        "dup_count": 2,
+        "details": {
+          "total_duplicates": 2,
+          "values": {
+            "P5||5.0": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                },
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "ProductId",
+          "Name"
+        ],
+        "dup_count": 2,
+        "details": {
+          "total_duplicates": 2,
+          "values": {
+            "P5||DuplicateRow": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                },
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "ProductId",
+          "SKU"
+        ],
+        "dup_count": 2,
+        "details": {
+          "total_duplicates": 2,
+          "values": {
+            "P5||D-1": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                },
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "ProductId",
+          "Family"
+        ],
+        "dup_count": 2,
+        "details": {
+          "total_duplicates": 2,
+          "values": {
+            "P5||Misc": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                },
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "Price",
+          "Name"
+        ],
+        "dup_count": 4,
+        "details": {
+          "total_duplicates": 4,
+          "values": {
+            "5.0||DuplicateRow": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                },
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                }
+              ]
+            },
+            "10.0||Widget": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P1",
+                  "Name": "Widget",
+                  "SKU": "W-100",
+                  "Family": "Widgets",
+                  "Price": 10.0
+                },
+                {
+                  "ProductId": "P2",
+                  "Name": "Widget",
+                  "SKU": "W-100",
+                  "Family": "Widgets",
+                  "Price": 10.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "Price",
+          "SKU"
+        ],
+        "dup_count": 4,
+        "details": {
+          "total_duplicates": 4,
+          "values": {
+            "5.0||D-1": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                },
+                {
+                  "ProductId": "P5",
+                  "Name": "DuplicateRow",
+                  "SKU": "D-1",
+                  "Family": "Misc",
+                  "Price": 5.0
+                }
+              ]
+            },
+            "10.0||W-100": {
+              "count": 2,
+              "examples": [
+                {
+                  "ProductId": "P1",
+                  "Name": "Widget",
+                  "SKU": "W-100",
+                  "Family": "Widgets",
+                  "Price": 10.0
+                },
+                {
+                  "ProductId": "P2",
+                  "Name": "Widget",
+                  "SKU": "W-100",
+                  "Family": "Widgets",
+                  "Price": 10.0
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "product_prices.csv": [
+      {
+        "key": [
+          "ProductId",
+          "ListPrice"
+        ],
+        "dup_count": 2,
+        "details": {
+          "total_duplicates": 2,
+          "values": {
+            "P1||10.0": {
+              "count": 2,
+              "examples": [
+                {
+                  "PriceId": "PR1",
+                  "ProductId": "P1",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                },
+                {
+                  "PriceId": "PR6",
+                  "ProductId": "P1",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "ProductId",
+          "Currency"
+        ],
+        "dup_count": 2,
+        "details": {
+          "total_duplicates": 2,
+          "values": {
+            "P1||USD": {
+              "count": 2,
+              "examples": [
+                {
+                  "PriceId": "PR1",
+                  "ProductId": "P1",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                },
+                {
+                  "PriceId": "PR6",
+                  "ProductId": "P1",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "key": [
+          "ListPrice",
+          "Currency"
+        ],
+        "dup_count": 3,
+        "details": {
+          "total_duplicates": 3,
+          "values": {
+            "10.0||USD": {
+              "count": 3,
+              "examples": [
+                {
+                  "PriceId": "PR1",
+                  "ProductId": "P1",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                },
+                {
+                  "PriceId": "PR2",
+                  "ProductId": "P2",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                },
+                {
+                  "PriceId": "PR6",
+                  "ProductId": "P1",
+                  "Currency": "USD",
+                  "ListPrice": 10.0
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "expanded_orphans": [],
+  "fk_merge_conflicts": {
+    "conflicts": [],
+    "summary": {
+      "total_conflicts": 0,
+      "total_rows_affected": 0
+    }
+  },
+  "one_to_one_issues": [],
+  "rca_suggestions": [
+    {
+      "area": "Primary Key: products.csv",
+      "priority": "High",
+      "reason": "No clear primary key found. RCA model requires stable identifiers.",
+      "actions": [
+        "Add a synthetic ID or identify a natural unique key",
+        "Ensure column is populated and unique"
+      ]
+    }
+  ],
+  "remediation_artifacts": {
+    "fk_updates_sql": null,
+    "child_rows_to_fix_csv": null,
+    "fk_merge_conflicts_summary": {
+      "total_conflicts": 0,
+      "total_rows_affected": 0
+    }
+  }
+}

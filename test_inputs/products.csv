@@ -1,0 +1,7 @@
+ProductId,Name,SKU,Family,Price
+P1,Widget,W-100,Widgets,10.00
+P2,Widget,W-100,Widgets,10.00
+P3,Gizmo,G-200,Gizmos,20.00
+P4,Gizmo,G-200,Gizmos,20.50
+P5,DuplicateRow,D-1,Misc,5.00
+P5,DuplicateRow,D-1,Misc,5.00
