@@ -20,7 +20,7 @@ if "user" not in st.session_state:
 
 # ---------------- AUTH UI ----------------
 def login_screen():
-    st.title("🔐 CPQ → RCA Analyzer - Login Required [Cloud Peritus]")
+    st.title("🔐 CPQ → RCA Analyzer - Login Required [Jay]")
     tab1, tab2 = st.tabs(["Login", "Create Account"])
 
     with tab1:
