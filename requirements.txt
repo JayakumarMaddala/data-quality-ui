@@ -4,4 +4,4 @@ numpy
 requests
 python-dotenv
 simple-salesforce
-PyYAML==6.0
+PyYAML==5.4.1
