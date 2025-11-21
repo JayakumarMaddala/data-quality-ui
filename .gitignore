@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Environment
+.env
+*.env
+
+# User DB / Reports / Local files
+users.db
+reports/
+sample_data/
+persistent/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

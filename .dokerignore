@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+.env
+.git
+reports/
+users.db
+sample_data/

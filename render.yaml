@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: cpq-rca-analyzer
+    env: docker
+    repo: "<YOUR_GIT_REPO_URL>"
+    branch: main
+    plan: starter
+    disk:
+      name: cpq-rca-analyzer-disk
+      mountPath: /persistent
+      sizeGB: 1
+    dockerfilePath: Dockerfile
+    startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
+    autoDeploy: true
+    envVars:
+      - key: PERSISTENT_DIR
+        value: /persistent
