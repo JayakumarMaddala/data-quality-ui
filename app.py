@@ -141,11 +141,11 @@ def salesforce_connect_panel(out_dir: str = "analysis_output") -> Tuple[Dict[str
     with col1:
         st.markdown("#### OAuth / Connected App (recommended for production)")
         st.markdown("Create a Connected App in Salesforce and supply Client ID/Secret + redirect URI.")
-        st.caption("Scopes: `api` and `refresh_token` are typically used. In dev you can use redirect `http://localhost:8501/` then copy-paste code back into the app.")
+        st.caption("Scopes: `api` and `refresh_token` are typically used. In dev you can use redirect `https://data-quality-ui-z6jhwctbwsffhaus82zxqm.streamlit.app/` then copy-paste code back into the app.")
 
         client_id = st.text_input("Connected App Client ID (Consumer Key)", key="sf_client_id")
         client_secret = st.text_input("Connected App Client Secret", type="password", key="sf_client_secret")
-        redirect_uri = st.text_input("Redirect URI (must match Connected App)", value="http://localhost:8501/", key="sf_redirect_uri")
+        redirect_uri = st.text_input("Redirect URI (must match Connected App)", value="https://data-quality-ui-z6jhwctbwsffhaus82zxqm.streamlit.app/", key="sf_redirect_uri")
         oauth_domain = st.selectbox("Auth Domain", ["login", "test"], index=0, key="oauth_domain")
         st.write("1) Click below to open the Salesforce consent page in a new tab/window.")
         auth_url = None
