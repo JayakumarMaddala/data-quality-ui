@@ -12,6 +12,9 @@ import auth_db
 PERSISTENT_DIR = os.getenv("PERSISTENT_DIR", os.path.join(os.path.dirname(__file__), "sample_data"))
 os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
+# image path (user-provided screenshot in the container)
+SCREENSHOT_PATH = "/mnt/data/c4bdf6a5-60db-460f-ace0-83ce071b9bf1.png"
+
 st.set_page_config(page_title="CPQ -> RCA Analyzer (Jay)", layout="wide")
 auth_db.init_db()
 
@@ -60,10 +63,50 @@ def logout_button():
         st.success("Logged out")
         st.rerun()
 
+# ---------------- Helper for badges ----------------
+def badge_html(text: str, color_hex: str = "#d4f7dc", text_color: str = "#085f2e"):
+    # small pill-like badge
+    html = f"""
+    <div style="
+        display:inline-block;
+        padding:8px 12px;
+        border-radius:8px;
+        background:{color_hex};
+        color:{text_color};
+        font-weight:600;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        margin:4px 0;
+    ">{text}</div>
+    """
+    return html
+
+def status_to_badge(status: str, reason: str = ""):
+    s = status.lower()
+    if s in ("analyzed","valid","ok"):
+        return badge_html("Analyzed", "#e6f9ee", "#0b6b36")
+    if s in ("skipped","invalid"):
+        # include reason
+        label = "Skipped" if s == "skipped" else status.capitalize()
+        badge = badge_html(label, "#fff6d9", "#7a5a00")
+        if reason:
+            reason_html = f"<div style='color:#6b6b6b;margin-top:6px;font-size:13px'>Reason: {st.markdown(reason, unsafe_allow_html=False) or reason}</div>"
+            # We can't easily return mixed st.markdown content here, so just attach reason text (we'll display separately)
+            return badge
+        return badge
+    # default
+    return badge_html(status, "#eef2ff", "#24346b")
+
 # ---------------- Analyzer UI ----------------
 def analyzer_ui(username: str):
     st.title(f"CPQ → RCA Analyzer (User: {username})")
     logout_button()
+
+    # show provided screenshot if exists (example visual)
+    if os.path.exists(SCREENSHOT_PATH):
+        st.markdown("**Sample UI / Summary Preview**")
+        st.image(SCREENSHOT_PATH, use_column_width=True)
+    else:
+        st.info("No sample screenshot found in container path.")
 
     # show generic sample pdf if exists
     sample_pdf_path = os.path.join(PERSISTENT_DIR, "cpq_reference.pdf")
@@ -126,73 +169,84 @@ def _save_and_render(report: Dict[str, Any], username: str):
     render_report_ui(report)
 
 def render_report_ui(report: Dict[str, Any]):
-    st.subheader("Validation Overview")
+    # Top-level summary (counts)
+    st.markdown("## Summary")
     validation = report.get("validation", {})
     uploaded = validation.get("uploaded_count", 0)
     valid = validation.get("validated_count", 0)
-    invalid = validation.get("invalid_count", 0)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Files uploaded", uploaded)
-    c2.metric("Files validated", valid)
-    c3.metric("Files invalid", invalid)
+    skipped = validation.get("skipped_count", 0) or validation.get("invalid_count", 0)
+    inferred_rels = len(report.get("relationships", []))
+    orphan_issues = len(report.get("orphans", []))
 
-    st.subheader("Validation details (per file)")
+    col1, col2, col3, col4, col5 = st.columns([1,1,1,1,1])
+    col1.metric("Tables uploaded", uploaded)
+    col2.metric("Tables analyzed (valid for analysis)", valid)
+    col3.metric("Tables skipped", skipped)
+    col4.metric("Inferred relationships", inferred_rels)
+    col5.metric("Orphan relationship issues", orphan_issues)
+
+    st.markdown("---")
+    st.markdown("## Uploaded file status")
+    st.markdown("**Filename — Status — Reason (if skipped)**")
+
     details = validation.get("details", {})
-    rows = []
+    if not details:
+        st.write("No file-level validation details available.")
+    else:
+        # render rows similar to screenshot
+        for fname, vd in details.items():
+            st.write("")  # spacer
+            left, right = st.columns([3,1])
+            left.markdown(f"**{fname}**")
+            # determine status label & reason
+            is_valid = vd.get("is_valid", False)
+            reasons = vd.get("reasons", [])
+            reason_text = "; ".join(reasons) if reasons else ""
+            duplicate_info = vd.get("duplicate_info", {})
+            if is_valid:
+                right.markdown(badge_html("Analyzed", "#e6f9ee", "#0b6b36"), unsafe_allow_html=True)
+            else:
+                # treat as skipped/invalid
+                right.markdown(badge_html("Skipped", "#fff6d9", "#7a5a00"), unsafe_allow_html=True)
+                if reason_text:
+                    # small muted reason at right of row
+                    right.markdown(f"<div style='font-size:12px;color:#5b5b5b;margin-top:6px'>Reason: {reason_text}</div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("### Skipped files (with reasons)")
+    skipped_rows = []
     for fname, vd in details.items():
-        rows.append({
-            "file": fname,
-            "is_valid": vd.get("is_valid", False),
-            "reasons": "; ".join(vd.get("reasons", [])),
-            "duplicates": json.dumps(vd.get("duplicate_info", {})),
-            "missing_mandatory": ", ".join(vd.get("missing_mandatory", []))
-        })
-    if rows:
-        st.dataframe(pd.DataFrame(rows))
+        if not vd.get("is_valid", False):
+            reasons = vd.get("reasons", [])
+            skipped_rows.append({"file": fname, "reasons": "; ".join(reasons) or "Unknown"})
+    if skipped_rows:
+        st.table(pd.DataFrame(skipped_rows))
     else:
-        st.write("No validation details available.")
+        st.write("No skipped files.")
 
-    st.subheader("Relation type breakdown")
-    rtc = report.get("relation_type_counts", {})
-    if rtc:
-        rtc_df = pd.DataFrame([{"relation_type": k, "count": v} for k, v in rtc.items()]).sort_values("count", ascending=False)
-        st.table(rtc_df)
-    else:
-        st.write("No relationships inferred.")
-
+    st.markdown("---")
+    # Relationships sample and other sections (keep similar to previous UI but improved)
     st.subheader("Inferred Relationships (sample)")
     rels = report.get("relationships", [])
     if rels:
         rel_df = pd.DataFrame(rels).fillna("-")
         show_cols = [c for c in ["from","fk","to","to_pk_candidate","type"] if c in rel_df.columns]
-        st.dataframe(rel_df[show_cols], height=250)
+        st.dataframe(rel_df[show_cols], height=240)
     else:
         st.write("No relationships inferred.")
-
-    st.subheader("Duplicates summary")
-    dup_rows = []
-    for fname, vd in details.items():
-        dup = vd.get("duplicate_info", {})
-        if dup:
-            for pk_col, cnt in dup.items():
-                dup_rows.append({"file": fname, "pk_col": pk_col, "duplicate_count": cnt})
-    if dup_rows:
-        st.table(pd.DataFrame(dup_rows))
-    else:
-        st.write("No duplicate primary-key issues detected.")
 
     st.subheader("Orphan records (examples)")
     orphans = report.get("orphans", [])
     if orphans:
         for o in orphans:
-            st.write(f"Child: **{o['from']}** → Parent: **{o['to']}** FK: `{o['fk']}` missing {o['count']} rows")
+            st.write(f"Child: **{o.get('from','?')}** → Parent: **{o.get('to','?')}** FK: `{o.get('fk','?')}` missing {o.get('count',0)} rows")
             st.json(o.get("examples", []))
     else:
         st.success("No orphan records detected for inferred relationships.")
 
     st.subheader("RCA Mapping Suggestions")
     for s in report.get("rca_suggestions", []):
-        st.markdown(f"**{s['area']}** — _{s.get('priority','')}_")
+        st.markdown(f"**{s.get('area','Unknown')}** — _{s.get('priority','')}_")
         st.write(s.get("reason",""))
         for a in s.get("actions", []):
             st.write(f"- {a}")
