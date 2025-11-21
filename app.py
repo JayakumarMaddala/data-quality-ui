@@ -8,7 +8,7 @@ Streamlit app with:
  - Ability to list SBQQ__* objects and fetch sample rows into analyzer
 Place next to analyzer.py and auth_db.py and the helper sf_pkce_oauth.py
 """
-
+import yaml
 import os
 import json
 import datetime
@@ -18,7 +18,6 @@ from typing import Dict, Any, List, Tuple, Optional
 import pandas as pd
 import streamlit as st
 import requests
-import yaml
 
 # local project modules (must exist)
 import analyzer    # must provide read_table, generate_analysis_report, load_business_key_map
