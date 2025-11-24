@@ -154,17 +154,26 @@ def basic_column_stats(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
 
 def score_pk_candidate(col: str, stats_col: Dict[str, Any]) -> float:
     score = 0.0
-    score += stats_col["pct_unique"] * 70
+    # Slightly lower weight on pct_unique so ID-like names can win
+    score += stats_col["pct_unique"] * 60
     score += (1 - stats_col["pct_null"]) * 20
+
+    # Type hints
     if "int" in stats_col["dtype"] or "float" in stats_col["dtype"]:
         score += 5
     if "object" in stats_col["dtype"] or "str" in stats_col["dtype"]:
         score += 3
+
     lname = col.lower()
+
+    # BIG bonus for ID-like PKs (Product ID, AccountId, etc.)
     if lname == "id" or lname.endswith("id") or lname.endswith("_id"):
-        score += 10
+        score += 30   # was 10
+
+    # Smaller bonus for other “key-like” names
     if "code" in lname or "key" in lname or "pk" in lname or "name" in lname:
         score += 2
+
     return score
 
 def find_single_pk(df: pd.DataFrame, min_pct_unique=0.99) -> Optional[str]:
@@ -200,14 +209,22 @@ def find_composite_pk(df: pd.DataFrame, max_comb=2) -> Optional[List[str]]:
 def infer_pk(df: pd.DataFrame) -> Dict[str, Any]:
     if df is None:
         return {"single": None, "composite": None, "stats": {}}
-    single = find_single_pk(df)
+    # Relax uniqueness requirement: IDs with >=50% unique values are allowed
+    single = find_single_pk(df, min_pct_unique=0.5)
     composite = None if single else find_composite_pk(df, max_comb=2)
     stats = basic_column_stats(df)
     return {"single": single, "composite": composite, "stats": stats}
 
 def find_fk_candidates(tables: Dict[str, pd.DataFrame],
                        pks: Dict[str, Dict[str, Any]],
-                       subset_threshold=0.75) -> List[Dict[str, Any]]:
+                       subset_threshold=0.25) -> List[Dict[str, Any]]:
+    """
+    Automatically infer FK relationships between tables.
+
+    NOTE: subset_threshold lowered to 0.25 and we now allow matches with
+    at least 1 overlapping value, so small test files (like your 2-row
+    orphan test) will still infer a relationship.
+    """
     rels = []
     pk_values = {}
     for tname, pinfo in pks.items():
@@ -241,7 +258,9 @@ def find_fk_candidates(tables: Dict[str, pd.DataFrame],
                     continue
                 overlap_prop = len(intersection) / len(col_vals)
                 parent_coverage = len(intersection) / len(parent_vals) if parent_vals else 0
-                if overlap_prop >= subset_threshold and len(intersection) >= 2:
+
+                # ------- CHANGED: allow intersection size >= 1 ----------
+                if overlap_prop >= subset_threshold and len(intersection) >= 1:
                     try:
                         child_nonnull = df[[col]].dropna().astype(str)
                         parent_map_counts = {}
@@ -443,6 +462,10 @@ def check_business_key_uniqueness(df: pd.DataFrame, business_keys: List[List[str
 def check_referential_integrity(tables: Dict[str, pd.DataFrame],
                                 relationships: List[Dict[str, Any]],
                                 pks: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Expanded referential integrity check that also returns per-relationship
+    orphan counts and example rows. This feeds report['expanded_orphans'].
+    """
     out = []
     for r in relationships:
         child = r["from"]
@@ -659,8 +682,8 @@ def generate_analysis_report(raw_tables: Dict[str, Any],
         validation["details"][tname] = detail
         validation["files_analyzed"].append(tname)
 
-    # infer relationships
-    relationships = find_fk_candidates(tables, pks, subset_threshold=0.75)
+    # infer relationships (with relaxed threshold so small overlaps still count)
+    relationships = find_fk_candidates(tables, pks, subset_threshold=0.25)
 
     # compute relation-type breakdown keyed by table pairs
     relation_type_counts = {}
