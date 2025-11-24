@@ -1,3 +1,4 @@
+APP_VERSION = "2024-11-24-01"   # <- just a label, change when you update
 # analyzer.py
 import pandas as pd
 import json

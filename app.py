@@ -1081,7 +1081,13 @@ def analyzer_ui():
     else:
         analysis_page()
 
+ # ----- Summary header -----
+    st.header("Analysis Summary")
 
+    # show which analyzer version this app is using
+    analyzer_version = getattr(analyzer, "APP_VERSION", "unknown")
+    st.caption(f"Analyzer version: {analyzer_version}")
+    
 # -------------------- Main --------------------
 def main():
     # Initialize DB but do NOT reset user/page on each rerun
