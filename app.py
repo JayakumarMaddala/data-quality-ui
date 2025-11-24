@@ -1,4 +1,4 @@
-# app.py
+# app_v2.py
 """
 Streamlit app with:
  - Login card (local auth_db)
@@ -7,7 +7,21 @@ Streamlit app with:
  - Salesforce OAuth Connected App using PKCE: build auth URL -> paste code -> exchange for tokens
  - Ability to list SBQQ__* objects and fetch sample rows into analyzer
 
-Place next to analyzer.py and auth_db.py and the helper sf_pkce_oauth.py
+This version (v2) adds:
+ - Two-step flow:
+     1) Upload page
+     2) Analysis page
+ - On upload page:
+     * Show files, Salesforce connect, business key map
+     * Button: "Click here for the Analysis"
+ - On analysis page:
+     * Uses cached report (generated once)
+     * 5 sections, each with its own "Run Analysis" button:
+         1) Primary Key uniqueness
+         2) Full-row duplicates
+         3) Logical / Business key uniqueness
+         4) FK Consistency (incl. 1:1 + FK merge conflicts)
+         5) Referential Integrity (orphans)
 """
 
 import yaml
@@ -38,10 +52,8 @@ from sf_pkce_oauth import (
 from simple_salesforce import Salesforce, SalesforceLogin
 
 # -------------------- Config --------------------
-# Use persistent dir under project by default (or override PERSISTENT_DIR)
 PERSISTENT_DIR = os.getenv(
-    "PERSISTENT_DIR",
-    os.path.join(os.path.dirname(__file__), "sample_data")
+    "PERSISTENT_DIR", os.path.join(os.path.dirname(__file__), "sample_data")
 )
 os.makedirs(PERSISTENT_DIR, exist_ok=True)
 
@@ -51,6 +63,8 @@ SAMPLE_PDF_PATH = "/mnt/data/CPQ Book by Chandra.pdf"
 st.set_page_config(page_title="CPQ → RCA Analyzer (Jay)", layout="wide")
 
 # -------------------- Helpers --------------------
+
+
 def sample_preview(rows, max_chars: int = 300) -> str:
     try:
         s = json.dumps(rows, indent=0)
@@ -64,6 +78,8 @@ def normalize_sf_name(n: str) -> str:
 
 
 # -------------------- Salesforce helpers --------------------
+
+
 def connect_salesforce_username_password(
     username: str,
     password: str,
@@ -71,7 +87,7 @@ def connect_salesforce_username_password(
     domain: str = "login",
 ) -> Salesforce:
     """
-    Quick dev connect using SalesforceLogin (preferred over appending token to password).
+    Quick dev connect using SalesforceLogin.
     Raises exception on failure; Test Connection button will capture traceback.
     """
     session_id, instance = SalesforceLogin(
@@ -85,10 +101,7 @@ def connect_salesforce_username_password(
 
 
 def sf_from_tokens(instance_url: str, access_token: str) -> Salesforce:
-    """
-    Build a simple_salesforce Salesforce object from an existing instance_url and access_token.
-    Useful after OAuth token exchange.
-    """
+    """Build simple_salesforce Salesforce object from OAuth tokens."""
     return sf_from_tokens_helper(instance_url=instance_url, access_token=access_token)
 
 
@@ -118,19 +131,22 @@ def fetch_sample_records(
 
 
 # -------------------- UI: Salesforce connection panel (PKCE) --------------------
+
+
 def salesforce_connect_panel(
     out_dir: str = "analysis_output",
 ) -> Tuple[Dict[str, pd.DataFrame], List[str], Optional[dict]]:
     """
     returns (sf_tables, saved_files, oauth_tokens)
-      - sf_tables: dict name->DataFrame fetched via quick connect or OAuth
-      - saved_files: list of local artifact paths saved
-      - oauth_tokens: dict with token response if OAuth used
+     - sf_tables: dict name->DataFrame fetched via quick connect or OAuth
+     - saved_files: list of local artifact paths saved
+     - oauth_tokens: dict with token response if OAuth used
     """
     st.markdown("### Connect to Salesforce (optional)")
     st.info("Use OAuth (Connected App) (recommended).")
 
     col1, col2 = st.columns(2)
+
     sf_tables: Dict[str, pd.DataFrame] = {}
     saved_files: List[str] = []
     oauth_tokens = None
@@ -149,8 +165,7 @@ def salesforce_connect_panel(
             "Create a Connected App in Salesforce and supply Client ID/Secret + redirect URI."
         )
         st.caption(
-            "Scopes: `api` and `refresh_token`. For local dev you can use redirect "
-            "`http://localhost:8501/`, for Cloud use your deployed URL."
+            "Scopes: api and refresh_token. For Cloud use your deployed URL as redirect."
         )
 
         client_id = st.text_input(
@@ -160,7 +175,6 @@ def salesforce_connect_panel(
         # ---- PKCE reset when Client ID changes ----
         prev_client_id = st.session_state.get("prev_client_id")
         if prev_client_id and prev_client_id != client_id:
-            # clear old verifier and URL for old client_id
             st.session_state["pkce"].pop(prev_client_id, None)
             st.session_state["pkce_auth_url"].pop(prev_client_id, None)
         st.session_state["prev_client_id"] = client_id
@@ -171,32 +185,29 @@ def salesforce_connect_panel(
             type="password",
             key="sf_client_secret",
         )
-        # default to your deployed Streamlit Cloud redirect URI — ensure this EXACT string is configured in the Connected App
+
         redirect_uri = st.text_input(
             "Redirect URI (must match Connected App)",
             value="https://data-quality-ui-z6jhwctbwsffhaus82zxqm.streamlit.app/",
             key="sf_redirect_uri",
         )
+
         oauth_domain = st.selectbox(
             "Auth Domain", ["login", "test"], index=0, key="oauth_domain"
         )
 
-        st.write(
-            "1) Click below to open the Salesforce consent page in a new tab/window."
-        )
+        st.write("1) Click below to open the Salesforce consent page in a new tab/window.")
 
         auth_url: Optional[str] = None
 
         # Build PKCE challenge and URL when we have client_id+redirect
         if client_id and redirect_uri:
             verifier = st.session_state["pkce"].get(client_id)
-
             if not verifier:
                 # First time for this client_id → generate verifier + challenge
                 verifier = generate_code_verifier()
                 st.session_state["pkce"][client_id] = verifier
                 challenge = code_challenge_from_verifier(verifier)
-
                 auth_url = build_salesforce_auth_url(
                     client_id=client_id,
                     redirect_uri=redirect_uri,
@@ -218,16 +229,16 @@ def salesforce_connect_panel(
                 st.error("Provide Client ID and Redirect URI first.")
             else:
                 st.info(
-                    "Open the URL (copy/paste if browser didn't open). "
-                    "After consenting, Salesforce will redirect to your redirect URI with `?code=...`."
+                    "Open the URL (copy/paste). After consenting, Salesforce will redirect "
+                    "to your redirect URI with ?code=...."
                 )
 
         st.markdown(
-            "2) After consenting, copy the `code` parameter from the redirected URL "
-            "and paste below to exchange it for tokens."
+            "2) After consenting, copy the `code` parameter from the redirected URL and "
+            "paste below to exchange it for tokens."
         )
         auth_code = st.text_input(
-            "Paste authorization code (value of `code` query param)", key="oauth_code"
+            "Paste authorization code (value of code query param)", key="oauth_code"
         )
 
         if st.button("Exchange code for tokens", key="exchange_code_btn"):
@@ -243,7 +254,6 @@ def salesforce_connect_panel(
                                 "Re-start auth flow (re-generate auth url)."
                             )
                         else:
-                            # Exchange code for tokens (PKCE-aware)
                             resp = exchange_code_for_token(
                                 client_id=client_id,
                                 client_secret=client_secret or None,
@@ -282,7 +292,6 @@ def salesforce_connect_panel(
                                     "Connected to Salesforce via OAuth — "
                                     "simple_salesforce instance ready."
                                 )
-                                # optionally fetch SBQQ objects
                                 sobjects = fetch_org_sobjects(sf, limit=500)
                                 sbqqs = [
                                     s for s in sobjects if s.upper().startswith("SBQQ__")
@@ -305,9 +314,7 @@ def salesforce_connect_panel(
                                             df = fetch_sample_records(
                                                 sf, api_name, limit=200
                                             )
-                                            key = (
-                                                f"sf__{normalize_sf_name(api_name)}"
-                                            )
+                                            key = f"sf__{normalize_sf_name(api_name)}"
                                             sf_tables[key] = df
                                             csv_path = os.path.join(
                                                 meta_folder,
@@ -328,24 +335,26 @@ def salesforce_connect_panel(
                                     "Tokens exchanged but failed to instantiate "
                                     f"API client: {e}"
                                 )
+
                 except Exception as e:
                     st.error("Code exchange failed: " + str(e))
                     with st.expander("Show full traceback"):
                         st.text(traceback.format_exc())
 
     # (Right column reserved for quick username+token connect later, if needed)
-
     return sf_tables, saved_files, oauth_tokens
 
 
 # -------------------- Login card (non-blocking) --------------------
+
+
 def login_card():
     st.markdown(
         """
         <style>
-          .login-box { max-width:880px; margin:24px auto; }
-          .login-title { font-size:22px; font-weight:700; margin-bottom:6px; }
-          .login-sub { color:#666; margin-bottom:12px; }
+        .login-box { max-width:880px; margin:24px auto; }
+        .login-title { font-size:22px; font-weight:700; margin-bottom:6px; }
+        .login-sub { color:#666; margin-bottom:12px; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -360,11 +369,12 @@ def login_card():
         )
         st.markdown(
             '<div class="login-sub">Please sign in to continue. '
-            'Create an account if you are new.</div>',
+            "Create an account if you are new.</div>",
             unsafe_allow_html=True,
         )
 
         tab1, tab2 = st.tabs(["Login", "Create account"])
+
         with tab1:
             user_in = st.text_input("Username or Email", key="login_user")
             pwd_in = st.text_input(
@@ -374,9 +384,11 @@ def login_card():
                 ok, username = auth_db.verify_user(user_in.strip(), pwd_in)
                 if ok:
                     st.session_state["user"] = username
+                    st.session_state["page"] = "upload"
                     st.rerun()
                 else:
                     st.error("Invalid username/email or password")
+
         with tab2:
             new_user = st.text_input("Choose Username", key="signup_user")
             new_email = st.text_input("Email", key="signup_email")
@@ -401,167 +413,14 @@ def login_card():
                         st.success("Account created — please login.")
                     else:
                         st.error(msg)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-# -------------------- Analyzer UI --------------------
-def analyzer_ui():
-    st.title(f"CPQ → RCA Analyzer (User: {st.session_state.get('user')})")
-    if st.button("Logout"):
-        st.session_state["user"] = None
-        st.rerun()
-
-    st.markdown("---")
-    # show reference PDF path and download button if present
-    if os.path.exists(SAMPLE_PDF_PATH):
-        st.markdown(f"📄 Reference PDF available at: `{SAMPLE_PDF_PATH}`")
-        try:
-            with open(SAMPLE_PDF_PATH, "rb") as pf:
-                st.download_button(
-                    "Download reference PDF",
-                    pf,
-                    file_name=os.path.basename(SAMPLE_PDF_PATH),
-                )
-        except Exception:
-            pass
-
-    st.markdown(
-        "Upload CPQ CSV/Excel exports (Product, Pricebook, Quote, "
-        "QuoteLine, etc.)."
-    )
-    uploaded_files = st.file_uploader(
-        "Upload files (CSV/XLSX)",
-        type=["csv", "xls", "xlsx"],
-        accept_multiple_files=True,
-    )
-    bkmap_file = st.file_uploader(
-        "Optional: Business Key Map (JSON/YAML)",
-        type=["json", "yml", "yaml"],
-        accept_multiple_files=False,
-    )
-    out_dir = st.text_input("Output folder", value="analysis_output")
-
-    if st.button("Load local sample files (env)"):
-        sample_paths = [
-            "/mnt/data/Products Data Table.xlsx",
-            "/mnt/data/Product Prices Data Table.xlsx",
-            "/mnt/data/Orders Data Table.xlsx",
-        ]
-        tables = {}
-        for p in sample_paths:
-            if os.path.exists(p):
-                try:
-                    obj = analyzer.read_table(p)
-                    if isinstance(obj, dict):
-                        for sheet, df in obj.items():
-                            tables[
-                                f"{os.path.splitext(os.path.basename(p))[0]}__{sheet}"
-                            ] = df
-                    else:
-                        tables[
-                            os.path.splitext(os.path.basename(p))[0]
-                        ] = obj
-                except Exception as e:
-                    st.warning(f"Failed to read {p}: {e}")
-            else:
-                st.warning(f"Sample file not found: {p}")
-        if tables:
-            st.success(f"Loaded {len(tables)} tables.")
-            with st.spinner("Analyzing sample files..."):
-                report = analyzer.generate_analysis_report(
-                    tables, output_folder=out_dir
-                )
-            render_report_ui(report, out_dir)
-        return
-
-    # Salesforce connect (OAuth)
-    sf_tables, sf_saved, oauth_tokens = salesforce_connect_panel(out_dir)
-
-    # read uploaded files
-    tables: Dict[str, pd.DataFrame] = {}
-    if uploaded_files:
-        for f in uploaded_files:
-            name = os.path.splitext(f.name)[0]
-            try:
-                content = f.read()
-                # attempt analyzer.read_table on bytes, stream or saved file
-                try:
-                    obj = analyzer.read_table(content)
-                except Exception:
-                    try:
-                        f.seek(0)
-                        obj = analyzer.read_table(f)
-                    except Exception:
-                        tmp = os.path.join(out_dir, f.name)
-                        with open(tmp, "wb") as wf:
-                            wf.write(content)
-                        obj = analyzer.read_table(tmp)
-                if isinstance(obj, dict):
-                    for sheet, df in obj.items():
-                        tables[f"{name}__{sheet}"] = df
-                else:
-                    tables[name] = obj
-            except Exception as e:
-                st.error(f"Failed to read {f.name}: {e}")
-
-    # the OAuth tokens (if obtained) can be used to fetch more SF data later
-    if oauth_tokens:
-        st.success(
-            "OAuth tokens are available in-memory for this session "
-            "(not saved to disk)."
-        )
-        if st.checkbox("Show returned token keys (masked)"):
-            masked = {
-                k: (v[:8] + "..." if isinstance(v, str) and len(v) > 8 else v)
-                for k, v in oauth_tokens.items()
-            }
-            st.json(masked)
-
-    # business key map
-    business_key_map = {}
-    if bkmap_file:
-        try:
-            bk_bytes = bkmap_file.read()
-            bk_path = os.path.join(out_dir, bkmap_file.name)
-            with open(bk_path, "wb") as wf:
-                wf.write(bk_bytes)
-            business_key_map = analyzer.load_business_key_map(bk_path)
-            st.success("Business key map loaded.")
-        except Exception as e:
-            st.warning(f"Could not load business key map: {e}")
-
-    if st.button("Run analysis"):
-        merged = {}
-        merged.update(tables)
-        merged.update(sf_tables or {})
-        if not merged:
-            st.error(
-                "No tables to analyze — upload files or fetch from Salesforce."
-            )
-            return
-        os.makedirs(out_dir, exist_ok=True)
-        with st.spinner("Running analyzer..."):
-            report = analyzer.generate_analysis_report(
-                merged,
-                business_key_map=business_key_map,
-                output_folder=out_dir,
-            )
-        render_report_ui(report, out_dir)
+# -------------------- Analysis-section rendering helpers --------------------
 
 
-# -------------------- Report UI --------------------
-def render_report_ui(report: Dict[str, Any], out_dir: str):
-    st.header("Analysis Summary")
-    validation = report.get("validation", {})
-    st.write(f"Tables uploaded: **{validation.get('uploaded_count', 0)}**")
-    st.write(f"Tables analyzed: **{validation.get('validated_count', 0)}**")
-    st.write(f"Inferred relationships: **{len(report.get('relationships', []))}**")
-    st.write(
-        f"Orphan issues (expanded): **{len(report.get('expanded_orphans', []))}**"
-    )
-    st.markdown("---")
-
-    # 1) PK uniqueness
+def render_pk_section(report: Dict[str, Any]):
     st.subheader("1) Primary Key uniqueness issues")
     pk_issues = report.get("pk_uniqueness_issues", {})
     pk_rows = []
@@ -589,9 +448,8 @@ def render_report_ui(report: Dict[str, Any], out_dir: str):
     else:
         st.write("No primary-key duplicates detected.")
 
-    st.markdown("---")
 
-    # 2) Full-row duplicates
+def render_full_row_section(report: Dict[str, Any]):
     st.subheader("2) Full-row duplicates")
     full_row = report.get("full_row_duplicates", {})
     fr_rows = []
@@ -616,15 +474,19 @@ def render_report_ui(report: Dict[str, Any], out_dir: str):
     else:
         st.write("No full-row duplicates detected.")
 
-    st.markdown("---")
 
-    # 3) Logical / Business key uniqueness
+def render_logical_business_section(report: Dict[str, Any]):
     st.subheader("3) Logical / Business Key Uniqueness")
+
     parent_map = report.get("parent_merge_map", {})
     if parent_map:
+        st.markdown("**Logical duplicate parent merges (canonical mapping):**")
         st.dataframe(
             pd.DataFrame(
-                [{"duplicate_pk": k, "canonical": v} for k, v in parent_map.items()]
+                [
+                    {"duplicate_pk": k, "canonical": v}
+                    for k, v in parent_map.items()
+                ]
             ),
             height=200,
         )
@@ -633,6 +495,7 @@ def render_report_ui(report: Dict[str, Any], out_dir: str):
 
     bk_issues = report.get("business_key_issues", {})
     if bk_issues:
+        st.markdown("**Business key duplicate issues:**")
         bk_rows = []
         for t, issues in bk_issues.items():
             for i in issues:
@@ -646,13 +509,17 @@ def render_report_ui(report: Dict[str, Any], out_dir: str):
                     }
                 )
         st.dataframe(pd.DataFrame(bk_rows), height=200)
+    else:
+        st.write("No business key duplicate issues detected.")
 
-    st.markdown("---")
 
-    # 4) FK consistency
-    st.subheader("4) FK Consistency (suggested remapping)")
+def render_fk_consistency_section(report: Dict[str, Any]):
+    st.subheader("4) FK Consistency & 1:1 Integrity")
+
+    # FK merge conflicts
     fk_conf = report.get("fk_merge_conflicts", {})
     if fk_conf.get("conflicts"):
+        st.markdown("**FK merge conflicts (suggested remapping):**")
         rows = []
         for c in fk_conf["conflicts"]:
             rows.append(
@@ -669,8 +536,25 @@ def render_report_ui(report: Dict[str, Any], out_dir: str):
         st.write("No FK merge conflicts detected.")
 
     st.markdown("---")
+    # 1-to-1 integrity issues
+    o2o = report.get("one_to_one_issues", [])
+    st.markdown("**1-to-1 integrity violations (if any):**")
+    if o2o:
+        st.dataframe(pd.DataFrame(o2o), height=220)
+    else:
+        st.write("No 1:1 integrity issues detected.")
 
-    # 5) Referential integrity (orphans)
+    st.markdown("---")
+    # Deduplication re-linking suggestions
+    st.markdown("**Deduplication re-linking (child FK conflicts):**")
+    cfc = report.get("child_fk_conflicts", [])
+    if cfc:
+        st.dataframe(pd.DataFrame(cfc), height=220)
+    else:
+        st.write("No child FK re-linking suggestions found.")
+
+
+def render_referential_section(report: Dict[str, Any]):
     st.subheader("5) Referential Integrity — Orphans")
     orphs = report.get("expanded_orphans", [])
     if orphs:
@@ -693,55 +577,332 @@ def render_report_ui(report: Dict[str, Any], out_dir: str):
     else:
         st.write("No orphan records detected.")
 
+
+def render_remediation_section(report: Dict[str, Any], out_dir: str):
     st.markdown("---")
+    st.subheader("Remediation Artifacts")
 
-    # 6) 1-to-1 integrity
-    st.subheader("6) 1-to-1 Integrity")
-    o2o = report.get("one_to_one_issues", [])
-    if o2o:
-        st.dataframe(pd.DataFrame(o2o), height=220)
-    else:
-        st.write("No 1:1 integrity issues detected.")
+    rem = report.get("remediation_artifacts", {}) or {}
+    fk_updates_path = rem.get("fk_updates_sql")
+    child_rows_path = rem.get("child_rows_to_fix_csv")
 
-    st.markdown("---")
-
-    # 7) Deduplication re-linking (child FK conflicts)
-    st.subheader("7) Deduplication Re-linking")
-    cfc = report.get("child_fk_conflicts", [])
-    if cfc:
-        st.dataframe(pd.DataFrame(cfc), height=220)
-    else:
-        st.write("No child FK re-linking suggestions found.")
-
-    st.markdown("---")
-    # remediation artifacts
-    rem = report.get("remediation_artifacts", {})
-    if rem.get("fk_updates_sql") and os.path.exists(rem["fk_updates_sql"]):
-        with open(rem["fk_updates_sql"], "rb") as f:
+    if fk_updates_path and os.path.exists(fk_updates_path):
+        with open(fk_updates_path, "rb") as f:
             st.download_button(
                 "Download fk_updates.sql",
                 f,
-                file_name=os.path.basename(rem["fk_updates_sql"]),
+                file_name=os.path.basename(fk_updates_path),
             )
-    if rem.get("child_rows_to_fix_csv") and os.path.exists(
-        rem["child_rows_to_fix_csv"]
-    ):
-        with open(rem["child_rows_to_fix_csv"], "rb") as f:
+
+    if child_rows_path and os.path.exists(child_rows_path):
+        with open(child_rows_path, "rb") as f:
             st.download_button(
                 "Download child_rows_to_fix.csv",
                 f,
-                file_name=os.path.basename(rem["child_rows_to_fix_csv"]),
+                file_name=os.path.basename(child_rows_path),
             )
 
     st.download_button(
         "Download full JSON report",
         json.dumps(report, indent=2),
-        file_name=f"analysis_report_{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.json",
+        file_name=(
+            f"analysis_report_{datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%S')}.json"
+        ),
         mime="application/json",
     )
 
 
+# -------------------- Upload & Analysis UI --------------------
+
+
+def upload_page():
+    """First page: upload, configure, then jump to analysis."""
+
+    st.title(f"CPQ → RCA Analyzer (User: {st.session_state.get('user')})")
+    if st.button("Logout"):
+        st.session_state["user"] = None
+        st.session_state["page"] = "upload"
+        st.rerun()
+
+    st.markdown("---")
+
+    # show reference PDF path and download button if present
+    if os.path.exists(SAMPLE_PDF_PATH):
+        st.markdown(f"📄 Reference PDF available at: `{SAMPLE_PDF_PATH}`")
+        try:
+            with open(SAMPLE_PDF_PATH, "rb") as pf:
+                st.download_button(
+                    "Download reference PDF",
+                    pf,
+                    file_name=os.path.basename(SAMPLE_PDF_PATH),
+                )
+        except Exception:
+            pass
+
+    st.markdown(
+        "Upload CPQ CSV/Excel exports (Product, Pricebook, Quote, "
+        "QuoteLine, etc.)."
+    )
+
+    uploaded_files = st.file_uploader(
+        "Upload files (CSV/XLSX)",
+        type=["csv", "xls", "xlsx"],
+        accept_multiple_files=True,
+    )
+
+    bkmap_file = st.file_uploader(
+        "Optional: Business Key Map (JSON/YAML)",
+        type=["json", "yml", "yaml"],
+        accept_multiple_files=False,
+    )
+
+    out_dir = st.text_input("Output folder", value="analysis_output")
+
+    if "last_out_dir" not in st.session_state:
+        st.session_state["last_out_dir"] = out_dir
+    st.session_state["last_out_dir"] = out_dir
+
+    # Salesforce connect (OAuth)
+    sf_tables, sf_saved, oauth_tokens = salesforce_connect_panel(out_dir)
+
+    # read uploaded files into tables
+    tables: Dict[str, pd.DataFrame] = {}
+    if uploaded_files:
+        for f in uploaded_files:
+            name = os.path.splitext(f.name)[0]
+            try:
+                content = f.read()
+                # try as bytes, stream, or saved file
+                try:
+                    obj = analyzer.read_table(content)
+                except Exception:
+                    try:
+                        f.seek(0)
+                        obj = analyzer.read_table(f)
+                    except Exception:
+                        tmp = os.path.join(out_dir, f.name)
+                        with open(tmp, "wb") as wf:
+                            wf.write(content)
+                        obj = analyzer.read_table(tmp)
+                if isinstance(obj, dict):
+                    for sheet, df in obj.items():
+                        tables[f"{name}__{sheet}"] = df
+                else:
+                    tables[name] = obj
+            except Exception as e:
+                st.error(f"Failed to read {f.name}: {e}")
+
+    # Optional: show OAuth token keys (masked)
+    if oauth_tokens:
+        st.success(
+            "OAuth tokens are available in-memory for this session "
+            "(not saved to disk)."
+        )
+        if st.checkbox("Show returned token keys (masked)"):
+            masked = {
+                k: (v[:8] + "..." if isinstance(v, str) and len(v) > 8 else v)
+                for k, v in oauth_tokens.items()
+            }
+            st.json(masked)
+
+    # business key map
+    business_key_map = {}
+    if bkmap_file:
+        try:
+            bk_bytes = bkmap_file.read()
+            bk_path = os.path.join(out_dir, bkmap_file.name)
+            os.makedirs(out_dir, exist_ok=True)
+            with open(bk_path, "wb") as wf:
+                wf.write(bk_bytes)
+            business_key_map = analyzer.load_business_key_map(bk_path)
+            st.success("Business key map loaded.")
+        except Exception as e:
+            st.warning(f"Could not load business key map: {e}")
+
+    # Load local sample files (env)
+    if st.button("Load local sample files (env)"):
+        sample_paths = [
+            "/mnt/data/Products Data Table.xlsx",
+            "/mnt/data/Product Prices Data Table.xlsx",
+            "/mnt/data/Orders Data Table.xlsx",
+        ]
+        tables_local = {}
+        for p in sample_paths:
+            if os.path.exists(p):
+                try:
+                    obj = analyzer.read_table(p)
+                    if isinstance(obj, dict):
+                        for sheet, df in obj.items():
+                            tables_local[
+                                f"{os.path.splitext(os.path.basename(p))[0]}__{sheet}"
+                            ] = df
+                    else:
+                        tables_local[
+                            os.path.splitext(os.path.basename(p))[0]
+                        ] = obj
+                except Exception as e:
+                    st.warning(f"Failed to read {p}: {e}")
+            else:
+                st.warning(f"Sample file not found: {p}")
+
+        if tables_local:
+            st.success(f"Loaded {len(tables_local)} tables from sample files.")
+            merged = {}
+            merged.update(tables_local)
+            merged.update(sf_tables or {})
+            if not merged:
+                st.error(
+                    "No tables to analyze from samples or Salesforce."
+                )
+            else:
+                os.makedirs(out_dir, exist_ok=True)
+                with st.spinner("Running analyzer on sample files..."):
+                    report = analyzer.generate_analysis_report(
+                        merged,
+                        business_key_map=business_key_map,
+                        output_folder=out_dir,
+                    )
+                st.session_state["cached_report"] = report
+                st.session_state["cached_out_dir"] = out_dir
+                st.session_state["page"] = "analysis"
+                st.rerun()
+
+    st.markdown("---")
+    st.markdown(
+        "Once files are uploaded and (optionally) Salesforce data is fetched, "
+        "click below to go to the analysis page."
+    )
+
+    if st.button("Click here for the Analysis"):
+        merged = {}
+        merged.update(tables)
+        merged.update(sf_tables or {})
+
+        if not merged:
+            st.error(
+                "No tables to analyze — upload files or fetch from Salesforce."
+            )
+            return
+
+        os.makedirs(out_dir, exist_ok=True)
+        with st.spinner("Running analyzer..."):
+            report = analyzer.generate_analysis_report(
+                merged,
+                business_key_map=business_key_map,
+                output_folder=out_dir,
+            )
+
+        st.session_state["cached_report"] = report
+        st.session_state["cached_out_dir"] = out_dir
+        st.session_state["page"] = "analysis"
+        st.rerun()
+
+
+def analysis_page():
+    """Second page: show 5 independent analysis sections using cached report."""
+
+    st.title(f"CPQ → RCA Analyzer (User: {st.session_state.get('user')})")
+    top_cols = st.columns([1, 3])
+    with top_cols[0]:
+        if st.button("Back to Upload Page"):
+            st.session_state["page"] = "upload"
+            st.rerun()
+    with top_cols[1]:
+        if st.button("Logout"):
+            st.session_state["user"] = None
+            st.session_state["page"] = "upload"
+            st.rerun()
+
+    st.markdown("---")
+
+    report = st.session_state.get("cached_report")
+    out_dir = st.session_state.get("cached_out_dir") or "analysis_output"
+
+    if not report:
+        st.error(
+            "No analysis report in session. Please go back to the upload "
+            "page and run the analysis first."
+        )
+        return
+
+    # ----- Summary header -----
+    st.header("Analysis Summary")
+    validation = report.get("validation", {})
+    st.write(f"Tables uploaded: **{validation.get('uploaded_count', 0)}**")
+    st.write(f"Tables analyzed: **{validation.get('validated_count', 0)}**")
+    st.write(
+        f"Inferred relationships: **{len(report.get('relationships', []))}**"
+    )
+    st.write(
+        f"Orphan issues (expanded): **{len(report.get('expanded_orphans', []))}**"
+    )
+
+    st.markdown("---")
+
+    # -------- Section 1: PK uniqueness --------
+    st.markdown("### Section 1: Primary Key Uniqueness")
+    if st.button("Run Analysis", key="run_pk"):
+        st.session_state["show_pk_section"] = True
+    if st.session_state.get("show_pk_section"):
+        render_pk_section(report)
+
+    st.markdown("---")
+
+    # -------- Section 2: Full-row duplicates --------
+    st.markdown("### Section 2: Full-row Duplicates")
+    if st.button("Run Analysis", key="run_fr"):
+        st.session_state["show_fr_section"] = True
+    if st.session_state.get("show_fr_section"):
+        render_full_row_section(report)
+
+    st.markdown("---")
+
+    # -------- Section 3: Logical / Business keys --------
+    st.markdown("### Section 3: Logical / Business Key Uniqueness")
+    if st.button("Run Analysis", key="run_logical"):
+        st.session_state["show_logical_section"] = True
+    if st.session_state.get("show_logical_section"):
+        render_logical_business_section(report)
+
+    st.markdown("---")
+
+    # -------- Section 4: FK consistency --------
+    st.markdown("### Section 4: FK Consistency & 1:1 Integrity")
+    if st.button("Run Analysis", key="run_fk"):
+        st.session_state["show_fk_section"] = True
+    if st.session_state.get("show_fk_section"):
+        render_fk_consistency_section(report)
+
+    st.markdown("---")
+
+    # -------- Section 5: Referential integrity --------
+    st.markdown("### Section 5: Referential Integrity (Orphans)")
+    if st.button("Run Analysis", key="run_ref"):
+        st.session_state["show_ref_section"] = True
+    if st.session_state.get("show_ref_section"):
+        render_referential_section(report)
+
+    # -------- Remediation artifacts --------
+    render_remediation_section(report, out_dir)
+
+
+# -------------------- Analyzer UI entry --------------------
+
+
+def analyzer_ui():
+    # decide page
+    if "page" not in st.session_state:
+        st.session_state["page"] = "upload"
+
+    if st.session_state["page"] == "upload":
+        upload_page()
+    else:
+        analysis_page()
+
+
 # -------------------- Main --------------------
+
+
 def main():
     auth_db.init_db()
     if "user" not in st.session_state:
