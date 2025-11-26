@@ -381,6 +381,7 @@ def find_fk_candidates(
         child_norm = table_norm.get(child_name, _norm_name(child_name))
 
         for col in df.columns:
+            # Only look at Id-like columns for hints
             if not col.lower().endswith("id"):
                 continue
 
@@ -389,6 +390,7 @@ def find_fk_candidates(
             for parent_name, pinfo in pks.items():
                 if parent_name == child_name:
                     continue
+                # For hints, we only handle simple single-column PKs
                 if not pinfo or not pinfo.get("single"):
                     continue
 
@@ -396,15 +398,23 @@ def find_fk_candidates(
                 parent_norm = table_norm.get(parent_name, _norm_name(parent_name))
                 pk_norm = _norm_name(pkcol)
 
+                # Skip if we already have a value-based relationship
                 if (child_name, col, parent_name) in existing_rel_keys:
                     continue
 
+                # --- Heuristic matching rules (STRONG ONLY) ---
+                # 1) Exact match to parent table + "id": ContractId -> Contract
                 rule1 = col_norm == parent_norm + "id"
+                # 2) Column ends with parent name + "id": mycontractid -> Contract
                 rule2 = col_norm.endswith(parent_norm + "id")
+                # 3) Column name equals PK name: Id -> Id (common Salesforce)
                 rule3 = col_norm == pk_norm
-                rule4 = parent_norm in col_norm and col_norm.endswith("id")
 
-                if not (rule1 or rule2 or rule3 or rule4):
+                # IMPORTANT: we deliberately do NOT use the loose rule:
+                #    parent_norm in col_norm and col_norm.endswith("id")
+                # because it creates false matches like "Quote Line ID" -> "Quote.Id"
+
+                if not (rule1 or rule2 or rule3):
                     continue
 
                 rels.append(
@@ -470,8 +480,9 @@ def detect_orphans(
             parent_vals = set(tables[parent][pkcol].dropna().astype(str).unique())
             child_df = tables[child]
 
-            missing_mask = ~child_df[fk].astype(str).isin(parent_vals)
-            missing_mask = missing_mask & child_df[fk].notna()
+            fk_series = child_df[fk]
+            # Treat NULLs as orphans as well
+            missing_mask = fk_series.isna() | ~fk_series.astype(str).isin(parent_vals)
 
             count_missing = int(missing_mask.sum())
             if count_missing > 0:
