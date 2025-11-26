@@ -455,13 +455,12 @@ def detect_orphans(
 
     1) Relationship-based:
        For each inferred FK relationship, find child rows whose FK value
-       does NOT exist in the parent PK column.
+       is NULL or does NOT exist in the parent PK column.
 
     2) Global ID-based:
        For every Id-like column (col name ends with 'Id'), if there is
        no explicit relationship using that column, check its values
        against *all* Id/Id-like columns in the dataset.
-       Values that are not found anywhere are reported as "global" orphans.
     """
     orphans: List[Dict[str, Any]] = []
 
@@ -472,16 +471,23 @@ def detect_orphans(
         fk = r["fk"]
         pk_cols = r.get("to_pk_candidate", [])
 
+        # We only handle simple single-column PKs here
         if isinstance(pk_cols, list) and len(pk_cols) == 1:
             pkcol = pk_cols[0]
+
             if parent not in tables or child not in tables:
                 continue
 
-            parent_vals = set(tables[parent][pkcol].dropna().astype(str).unique())
+            parent_vals = set(
+                tables[parent][pkcol].dropna().astype(str).unique()
+            )
             child_df = tables[child]
 
             fk_series = child_df[fk]
-            # Treat NULLs as orphans as well
+
+            # Treat BOTH:
+            #  - rows where FK is NULL
+            #  - rows where FK value is not in the parent PK set
             missing_mask = fk_series.isna() | ~fk_series.astype(str).isin(parent_vals)
 
             count_missing = int(missing_mask.sum())
@@ -526,11 +532,12 @@ def detect_orphans(
             if not col.lower().endswith("id"):
                 continue
 
+            # Skip columns already handled in explicit relationships
             if (child_name, col) in handled_pairs:
                 continue
 
-            series = df[col].dropna().astype(str)
-            if series.empty:
+            series = df[col].astype(object)  # keep NaNs
+            if series.dropna().empty:
                 continue
 
             known_ids = set()
@@ -542,7 +549,8 @@ def detect_orphans(
             if not known_ids:
                 continue
 
-            missing_mask = ~series.isin(known_ids)
+            # NULL FK OR value not found globally
+            missing_mask = series.isna() | ~series.astype(str).isin(known_ids)
             if not missing_mask.any():
                 continue
 
@@ -792,8 +800,10 @@ def check_referential_integrity(
         if isinstance(pk_cols, list) and len(pk_cols) == 1:
             pkc = pk_cols[0]
             parent_vals = set(parent_df[pkc].dropna().astype(str).unique())
-            missing_mask = ~child_df[fk_col].astype(str).isin(parent_vals)
-            missing_mask = missing_mask & child_df[fk_col].notna()
+            fk_series = child_df[fk_col]
+
+            # NULL FK OR FK not in parent → orphan
+            missing_mask = fk_series.isna() | ~fk_series.astype(str).isin(parent_vals)
             missing_count = int(missing_mask.sum())
             if missing_count > 0:
                 out.append(
@@ -816,7 +826,9 @@ def check_referential_integrity(
                 combined_parent = parent_df[comp_cols].astype(str).fillna("__NULL__").agg("||".join, axis=1)
                 parent_set = set(combined_parent.unique())
                 combined_child = child_df[comp_cols].astype(str).fillna("__NULL__").agg("||".join, axis=1)
-                missing_mask = ~combined_child.isin(parent_set) & combined_child.notna()
+
+                # Treat rows where the composite FK is effectively NULL OR not found as orphans
+                missing_mask = combined_child.isna() | ~combined_child.isin(parent_set)
                 missing_count = int(missing_mask.sum())
                 if missing_count > 0:
                     out.append(
