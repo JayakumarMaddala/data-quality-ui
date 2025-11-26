@@ -1,4 +1,4 @@
-APP_VERSION = "2024-11-24-01"   # Version label for this analyzer module. Change when you update the logic.
+APP_VERSION = "2024-11-24-02"   # Version label for this analyzer module. Change when you update the logic.
 
 # ---------- Imports ----------
 import os
@@ -828,7 +828,7 @@ def check_referential_integrity(
                 combined_child = child_df[comp_cols].astype(str).fillna("__NULL__").agg("||".join, axis=1)
 
                 # Treat rows where the composite FK is effectively NULL OR not found as orphans
-                missing_mask = combined_child.isna() | ~combined_child.isin(parent_set)
+                missing_mask = ~combined_child.isin(parent_set)
                 missing_count = int(missing_mask.sum())
                 if missing_count > 0:
                     out.append(
